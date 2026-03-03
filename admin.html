@@ -229,6 +229,45 @@
       margin-left: 0 !important;
       margin-right: 6px;
     }
+    .row-drag-handle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      margin-right: 6px;
+      color: #9a8ab6;
+      cursor: grab;
+      vertical-align: middle;
+    }
+    .row-drag-handle:active {
+      cursor: grabbing;
+    }
+    .folder-node.is-drop-target {
+      border-style: dashed;
+      border-color: rgba(67, 195, 124, 0.8);
+      background: rgba(67, 195, 124, 0.16);
+      box-shadow: inset 0 0 0 1px rgba(67, 195, 124, 0.45);
+    }
+    .content .el-card[draggable="true"] {
+      cursor: grab;
+    }
+    .content .el-card[draggable="true"]:active {
+      cursor: grabbing;
+    }
+    .empty-tip {
+      margin: 26px auto 8px;
+      max-width: 620px;
+      border-radius: 14px;
+      border: 1px dashed rgba(138, 75, 255, 0.32);
+      background: rgba(255, 255, 255, 0.82);
+      padding: 16px 18px;
+      text-align: center;
+      color: #63557f;
+    }
+    .empty-tip .el-button {
+      margin-top: 10px;
+    }
     @media (max-width: 980px) {
       .disk-layout {
         grid-template-columns: 1fr;
@@ -269,6 +308,19 @@
     html[data-theme="dark"] .list-view-card .el-table th {
       background: rgba(76, 93, 164, 0.25);
       color: #dce7ff;
+    }
+    html[data-theme="dark"] .row-drag-handle {
+      color: #9cb0dd;
+    }
+    html[data-theme="dark"] .folder-node.is-drop-target {
+      border-color: rgba(87, 207, 138, 0.8);
+      background: rgba(87, 207, 138, 0.22);
+      box-shadow: inset 0 0 0 1px rgba(87, 207, 138, 0.45);
+    }
+    html[data-theme="dark"] .empty-tip {
+      border-color: rgba(141, 162, 255, 0.42);
+      background: rgba(16, 27, 44, 0.9);
+      color: #d5e3ff;
     }
   </style>
   <link rel="stylesheet" href="/mobile-refactor.css">
@@ -428,8 +480,12 @@
                 v-for="folder in folderTreeNodes"
                 :key="'folder-' + folder.path"
                 class="folder-node"
-                :class="{ 'is-active': folder.path === folderPath }"
+                :class="{ 'is-active': folder.path === folderPath, 'is-drop-target': dragState.active && dragState.targetPath === folder.path }"
                 @click="selectFolder(folder.path)"
+                @dragover.prevent="handleFolderDragOver(folder.path, $event)"
+                @dragenter.prevent="handleFolderDragEnter(folder.path)"
+                @dragleave.prevent="handleFolderDragLeave(folder.path)"
+                @drop.prevent="handleFolderDrop(folder.path, $event)"
               >
                 <span class="folder-node-main" :style="{ paddingLeft: (folder.depth * 14 + 6) + 'px' }">
                   <i class="fas" :class="folder.path === folderPath ? 'fa-folder-open' : 'fa-folder'"></i>
@@ -453,7 +509,7 @@
                 <template v-for="(item, index) in paginatedTableData" :key="index">
             <!-- 图片 - 根据实际文件类型渲染 -->
             <template v-if="getActualFileType(item.name) === 'image'">
-              <el-card class="image-card">
+              <el-card class="image-card" :draggable="true" @dragstart="handleFileDragStart(item, $event)" @dragend="handleFileDragEnd">
                 <span class="collect-icon" @click.stop="toggleLike(index, item.name)">
                 <i :class="item.metadata.liked ? 'fa-solid fa-bookmark liked' : 'fa-regular fa-bookmark not-liked'"></i>
                 </span>
@@ -493,7 +549,7 @@
             </template>
             <!-- 视频 - 根据实际文件类型渲染 -->
             <template v-else-if="getActualFileType(item.name) === 'video'">
-              <el-card class="video-card" :class="{ 'selected': item.selected }">
+              <el-card class="video-card" :class="{ 'selected': item.selected }" :draggable="true" @dragstart="handleFileDragStart(item, $event)" @dragend="handleFileDragEnd">
                 <div class="video-content">
                   <video :src="'/file/' + item.name" controls style="width: 100%; height: 100%; object-fit: cover;"></video>
                   <div class="video-title">
@@ -523,7 +579,7 @@
             </template>
             <!-- 音频 - 根据实际文件类型渲染 -->
             <template v-else-if="getActualFileType(item.name) === 'audio'">
-              <el-card class="audio-card" :class="{ 'selected': item.selected }">
+              <el-card class="audio-card" :class="{ 'selected': item.selected }" :draggable="true" @dragstart="handleFileDragStart(item, $event)" @dragend="handleFileDragEnd">
                 <div class="audio-content">
                   <!-- 音频标题区域 -->
                   <div class="audio-header">
@@ -568,7 +624,7 @@
             </template>
             <!-- 其他文件（文档等） - 默认渲染 -->
             <template v-else>
-              <el-card class="file-card" :class="{ 'selected': item.selected }">
+              <el-card class="file-card" :class="{ 'selected': item.selected }" :draggable="true" @dragstart="handleFileDragStart(item, $event)" @dragend="handleFileDragEnd">
                 <div class="file-content">
                   <!-- 文件标题区域 -->
                   <div class="file-header">
@@ -605,6 +661,12 @@
               </el-card>
             </template>
                 </template>
+                <div v-if="paginatedTableData.length === 0" class="empty-tip">
+                  当前目录下没有符合条件的文件。
+                  <div>
+                    <el-button size="mini" type="primary" @click="resetViewConditions">清空筛选并返回根目录</el-button>
+                  </div>
+                </div>
               </div>
             </template>
             <template v-else>
@@ -617,6 +679,9 @@
                   </el-table-column>
                   <el-table-column label="文件名" min-width="280" show-overflow-tooltip>
                     <template slot-scope="scope">
+                      <span class="row-drag-handle" draggable="true" @dragstart="handleFileDragStart(scope.row, $event)" @dragend="handleFileDragEnd">
+                        <i class="fas fa-grip-lines"></i>
+                      </span>
                       <span :style="{ color: scope.row.metadata.ListType === 'Block' ? '#999' : '' }">
                         {{ scope.row.metadata.fileName || scope.row.name }}
                       </span>
@@ -656,6 +721,12 @@
                     </template>
                   </el-table-column>
                 </el-table>
+                <div v-if="paginatedTableData.length === 0" class="empty-tip">
+                  当前目录下没有符合条件的文件。
+                  <div>
+                    <el-button size="mini" type="primary" @click="resetViewConditions">清空筛选并返回根目录</el-button>
+                  </div>
+                </div>
               </div>
             </template>
             <div class="pagination-container">
@@ -787,6 +858,11 @@
       folders: [],
       folderPath: '',
       folderLoading: false,
+      dragState: {
+        active: false,
+        fileIds: [],
+        targetPath: null,
+      },
       loadMode: 'normal', // normal | dataSaver | noImage
       safeMode: true, // NSFW 安全模式
       systemStatus: {
@@ -1149,6 +1225,101 @@
           }
         }
       },
+      resetViewConditions() {
+        this.search = '';
+        this.filterOption = 'all';
+        this.storageFilter = 'all';
+        this.fileType = 'all';
+        this.folderPath = '';
+        this.currentPage = 1;
+        this.refreshFileList();
+        this.$message.success('已恢复默认筛选');
+      },
+      resolveDraggedIds(item) {
+        if (!item || !item.name) return [];
+        if (item.selected) {
+          const selected = this.selectedFiles.map((file) => file.name).filter(Boolean);
+          if (selected.length > 0) return selected;
+        }
+        return [item.name];
+      },
+      handleFileDragStart(item, event) {
+        const ids = this.resolveDraggedIds(item);
+        if (!ids.length) return;
+        this.dragState.active = true;
+        this.dragState.fileIds = ids;
+        this.dragState.targetPath = null;
+        if (event && event.dataTransfer) {
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('application/x-kvault-files', JSON.stringify(ids));
+          event.dataTransfer.setData('text/plain', ids.join(','));
+        }
+      },
+      handleFileDragEnd() {
+        this.dragState.active = false;
+        this.dragState.fileIds = [];
+        this.dragState.targetPath = null;
+      },
+      handleFolderDragOver(path, event) {
+        if (!this.dragState.active) return;
+        if (event && event.dataTransfer) {
+          event.dataTransfer.dropEffect = 'move';
+        }
+      },
+      handleFolderDragEnter(path) {
+        if (!this.dragState.active) return;
+        this.dragState.targetPath = this.normalizeFolderPath(path);
+      },
+      handleFolderDragLeave() {
+        if (!this.dragState.active) return;
+        this.dragState.targetPath = null;
+      },
+      extractDragIds(event) {
+        if (this.dragState.fileIds.length > 0) return this.dragState.fileIds;
+        const raw = event?.dataTransfer?.getData('application/x-kvault-files') || '';
+        if (!raw) return [];
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed.map((item) => String(item || '')).filter(Boolean) : [];
+        } catch {
+          return [];
+        }
+      },
+      async handleFolderDrop(path, event) {
+        const targetFolderPath = this.normalizeFolderPath(path);
+        const ids = this.extractDragIds(event);
+        if (!ids.length) {
+          this.handleFileDragEnd();
+          return;
+        }
+
+        const hasEffectiveMove = ids.some((id) => {
+          const file = this.tableData.find((item) => item.name === id);
+          const current = this.normalizeFolderPath(file?.metadata?.folderPath || '');
+          return current !== targetFolderPath;
+        });
+        if (!hasEffectiveMove) {
+          this.handleFileDragEnd();
+          return;
+        }
+
+        try {
+          const result = await fetch('./api/manage/files/move-folder', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids, targetFolderPath }),
+          }).then((r) => r.json());
+          if (!result.success) throw new Error(result.error || '拖拽移动失败');
+          const folderLabel = targetFolderPath || '根目录';
+          this.$message.success(`已移动 ${result.moved || 0} 个文件到 ${folderLabel}`);
+          await this.refreshFileList();
+        } catch (error) {
+          this.$message.error(error.message || '拖拽移动失败');
+        } finally {
+          this.handleFileDragEnd();
+        }
+      },
       goHome() { window.location.href = './'; },  // 返回首页
       refreshDashboard() { location.reload(); },  // 刷新页面
       clearSelection() {  // 取消全部选择
@@ -1357,10 +1528,10 @@
       },
       sort(command) { this.sortOption = command; },  // 切换排序方式
       filter(command) { this.filterOption = command; },  // 切换筛选方式
-      switchStorageFilter(command) {
+      async switchStorageFilter(command) {
         this.storageFilter = command;
         this.currentPage = 1;
-        this.fetchFolders();
+        await this.refreshFileList();
       },  // 切换存储类型筛选
       async loadMore() {
         if (this.isLoadingMore || !this.nextCursor) return;
@@ -1371,6 +1542,9 @@
           params.set('limit', '100');
           params.set('includeStats', '1');
           params.set('folderPath', this.folderPath || '');
+          if (this.storageFilter && this.storageFilter !== 'all') {
+            params.set('storage', this.storageFilter);
+          }
           const result = await fetch(`./api/manage/list?${params.toString()}`, {
             method: 'GET',
             credentials: 'include',
@@ -1579,6 +1753,9 @@
           params.set('limit', '100');
           params.set('includeStats', '1');
           params.set('folderPath', this.folderPath || '');
+          if (this.storageFilter && this.storageFilter !== 'all') {
+            params.set('storage', this.storageFilter);
+          }
           const result = await fetch(`./api/manage/list?${params.toString()}`, { method: 'GET', credentials: 'include' })
             .then(response => response.json());
           const mapped = (result.keys || []).map((file) => this.normalizeListItem(file));
@@ -2207,6 +2384,15 @@
         this.sortData(this.tableData);
         // 初始化时不显示切换消息
         this.switchFileType(this.fileType, false);
+        if (this.tableData.length > 0 && this.filteredTableData.length === 0) {
+          this.search = '';
+          this.filterOption = 'all';
+          this.storageFilter = 'all';
+          this.fileType = 'all';
+          this.folderPath = '';
+          await this.refreshFileList();
+          this.$message.warning('检测到筛选条件无匹配，已自动恢复默认视图');
+        }
       } catch {
         this.$message.error('同步数据时出错，请检查网络连接');
       }
